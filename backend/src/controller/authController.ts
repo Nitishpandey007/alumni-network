@@ -3,6 +3,8 @@ import bcrypt from "bcrypt"
 import { prisma } from "../lib/prisma.js";
 import jwt from "jsonwebtoken"
 import { signupSchema, loginSchema } from "../types/zodSchema.js";
+import crypto from "crypto"
+import { sendVerificationEmail } from "../lib/mailer.js";
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
@@ -24,6 +26,7 @@ const signup = async (req : Request, res: Response)=>{
             return res.status(400).json({msg : "user already exists!"})
         }
         const hashPassword = await bcrypt.hash(data.password, 10);
+        const emailToken = crypto.randomBytes(32).toString("hex");
         const user = await prisma.user.create({
             data:{
                 email: data.email,
@@ -33,6 +36,8 @@ const signup = async (req : Request, res: Response)=>{
                 session : data.session,
                 role: data.role,
                 name: data.name,
+                emailToken: emailToken,
+                emailTokenExp: new Date(Date.now() + 24 * 60 * 60 * 1000),
 
                 student:
                 data.role === "STUDENT"
@@ -60,6 +65,8 @@ const signup = async (req : Request, res: Response)=>{
                 : undefined,
             }
         })
+
+        await sendVerificationEmail(data.email, emailToken);
         return res.status(201).json({
             msg : "signup successfull, Awaiting for verification",
             userId: user.id,
@@ -92,6 +99,12 @@ const login = async (req : Request, res : Response)=>{
                 msg: "email or password incorrect"
             })
         }
+
+        if(!user.emailVerified){
+            return res.status(400).json({
+                msg: "Email not verified"
+            })
+        }
         // checking the status
         if(
             (user.role === "STUDENT" && user.student?.status !== "VERIFIED") ||
@@ -121,11 +134,18 @@ const login = async (req : Request, res : Response)=>{
             sameSite: "strict",
             maxAge: 7 * 24 * 60 * 60 * 1000,
         })
-
+        let route;
+        if(user.role === "ADMIN"){
+            route = "/admin"
+        } else if(user.role === "STUDENT"){
+            route = "/student"
+        }else{
+            route = "/profile/alumni"
+        }
         //console.log("TOKEN => ", token);
         return res.status(200).json({
             msg: "login successfully",
-            token, //returning token
+            route,
         })
     }catch(e){
         return res.status(500).json({
@@ -146,4 +166,44 @@ const logout = (req: Request, res: Response)=>{
     })
 }
 
-export {signup, login, logout,};
+const verifyEmail = async (req: Request, res: Response) => {
+    const emailToken = typeof req.query.token === "string" ? req.query.token : undefined;
+
+    if (!emailToken) {
+        return res.status(400).json({
+            msg: "Invalid or missing email token",
+        });
+    }
+    
+    const user = await prisma.user.findFirst({
+        where: {
+            emailToken: emailToken,
+            emailTokenExp: {
+                gt: new Date(),
+            }
+        }
+    })
+
+    if(!user){
+        return res.status(400).json({
+            msg: "Invalid or Expired Email Token",
+        })
+    }
+
+    await prisma.user.update({
+        where :{
+            id: user.id,
+        },
+        data: {
+            emailVerified: true,
+            emailToken: null,
+            emailTokenExp: null
+        }
+    })
+
+    return res.status(200).json({
+        msg: "Email verified successfully"
+    })
+}
+
+export {signup, login, logout,verifyEmail};

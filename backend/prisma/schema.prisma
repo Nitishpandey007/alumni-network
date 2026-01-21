@@ -36,16 +36,21 @@ model User {
   college         String  @default("Katihar Engineering College")
   role            Role
   isActive        Boolean @default(true)
+  emailVerified   Boolean  @default(false)
+  emailToken      String?  @unique
+  emailTokenExp   DateTime?
 
   alumni          Alumni?
   student         Student?
   approvalLog     ApprovalLog[]
+  // job             job[]
 
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
   @@index([role])
   @@index([isActive])
+  @@index([emailVerified])
 }
 
 model Alumni {
@@ -64,6 +69,23 @@ model Alumni {
 
   @@index([status])
 }
+
+// model job {
+//   id              String @id @default(ulid())
+//   company         String
+//   role            String
+//   startDate       DateTime
+//   endDate         DateTime?
+//   isCurrent       Boolean @default(false)
+
+//   alumni          User @relation(fields: [userId], references: [id], onDelete: Cascade)
+//   userId          String
+
+//   createdAt       DateTime @default(now())
+//   updatedAt       DateTime @updatedAt
+
+//   @@index([userId])
+// }
 
 model Student {
   id             String  @id @default(uuid())
