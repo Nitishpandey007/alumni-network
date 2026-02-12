@@ -54,8 +54,6 @@ const signup = async (req : Request, res: Response)=>{
                 data.role === "ALUMNI"
                 ? {
                     create : {
-                        currentJob: data.alumni.currentJob,
-                        currentCompany: data.alumni.currentCompany,
                         linkedIn: data.alumni.linkedIn,
                         instagram: data.alumni.instagram,
                         portfolio: data.alumni.portfolio,
@@ -78,6 +76,7 @@ const signup = async (req : Request, res: Response)=>{
 
 const login = async (req : Request, res : Response)=>{
     try{
+        console.log("hii from login !!");
         const parsed = loginSchema.safeParse(req.body);
         if(!parsed.success){
             return res.status(400).json({
@@ -149,7 +148,8 @@ const login = async (req : Request, res : Response)=>{
         })
     }catch(e){
         return res.status(500).json({
-            msg: "something went wrong!"
+            msg: "something went wrong!",
+            e,
         })
     }
 }

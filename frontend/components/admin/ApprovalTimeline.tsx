@@ -5,6 +5,10 @@ type Props = {
   logs: any[];
   loading: boolean;
   onSelectUser: (id: string) => void;
+
+  // optional (only for bulk/select mode)
+  selectedIds?: string[];
+  onToggleSelect?: (id: string) => void;
 };
 
 function isSameDay(a: Date, b: Date) {
@@ -50,8 +54,9 @@ export default function ApprovalTimeline({
   logs,
   loading,
   onSelectUser,
+  selectedIds,
+  onToggleSelect,
 }: Props) {
-  // skeleton
   if (loading) {
     return (
       <div className="bg-white border rounded-xl p-6">
@@ -72,7 +77,6 @@ export default function ApprovalTimeline({
     );
   }
 
-  // group logs AFTER loading
   const groupedLogs = groupLogsByDate(logs);
 
   return (
@@ -80,17 +84,16 @@ export default function ApprovalTimeline({
       <ol className="relative border-l border-gray-200 space-y-10">
         {Object.entries(groupedLogs).map(([date, items]) => (
           <div key={date} className="space-y-6">
-            {/* Date label */}
             <div className="ml-6 text-sm font-semibold text-gray-500">
               {date}
             </div>
 
             {items.map((log) => {
               const approved = log.newStatus === "VERIFIED";
+              const isSelected = selectedIds?.includes(log.targetId);
 
               return (
                 <li key={log.id} className="ml-6">
-                  {/* Dot */}
                   <span
                     className={`absolute -left-3 flex items-center justify-center w-6 h-6 rounded-full ring-8 ring-white
                     ${approved ? "bg-green-100" : "bg-red-100"}`}
@@ -105,10 +108,31 @@ export default function ApprovalTimeline({
                   {/* Card */}
                   <div
                     onClick={() => onSelectUser(log.targetId)}
-                    className="p-4 bg-gray-50 rounded-xl border space-y-1 cursor-pointer hover:bg-gray-100 transition"
+                    className={`p-4 rounded-xl border space-y-1 cursor-pointer transition
+                      ${
+                        isSelected
+                          ? "bg-blue-50 border-blue-300"
+                          : "bg-gray-50 hover:bg-gray-100"
+                      }`}
                   >
+                    {/* Checkbox (only if bulk mode enabled) */}
+                    {onToggleSelect && (
+                      <div className="flex items-center gap-2 mb-2">
+                        <input
+                          type="checkbox"
+                          checked={!!isSelected}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={() => onToggleSelect(log.targetId)}
+                          className="h-4 w-4 accent-blue-600"
+                        />
+                        <span className="text-xs text-gray-500">Select</span>
+                      </div>
+                    )}
+
                     <p className="text-sm text-gray-800">
-                      <span className="font-medium">{log.actionBy?.name}</span>{" "}
+                      <span className="font-medium">
+                        {log.actionBy?.name}
+                      </span>{" "}
                       ({log.actionBy?.email}){" "}
                       {approved ? "approved" : "rejected"} a{" "}
                       <span className="font-medium lowercase">

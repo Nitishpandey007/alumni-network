@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { usePendingRequests } from "@/hooks/usePendingRequests";
 import RequestRow from "./RequestRow";
@@ -10,6 +10,8 @@ import RequestCard from "./RequestCard";
 import RequestRowSkeleton from "./RequestRowSkeleton";
 import RequestCardSkeleton from "./RequestCardSkeleton";
 import ConfirmActionModal from "./ConfirmActionModal";
+import axios from "axios";
+import BulkActionBar from "./BulkActionBar";
 
 type Props = {
   filters: PendingFilters;
@@ -22,6 +24,12 @@ export default function RequestTable({ filters }: Props) {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [actionType, setActionType] = useState<"approve" | "reject">("approve");
   const [list, setList] = useState<any[]>([]);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkLoading, setBulkLoading] = useState(false);
+
+  const selectAllRef = useRef<HTMLInputElement>(null);
+
+  const isMultiSelect = selectedIds.length > 0;
 
   const {
     users,
@@ -32,18 +40,101 @@ export default function RequestTable({ filters }: Props) {
     totalPages,
   } = usePendingRequests(filters, page);
 
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+  };
+
+  const clearSelection = () => setSelectedIds([]);
+
+  const allIds = users.map((u) => u.id);
+
+  const isAllSelected = users.length > 0 && selectedIds.length === users.length;
+
+  const toggleSelectAll = () => {
+    if (isAllSelected) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(allIds);
+    }
+  };
+
+  useEffect(() => {
+    if (!selectAllRef.current) return;
+
+    selectAllRef.current.indeterminate =
+      selectedIds.length > 0 && selectedIds.length < users.length;
+  }, [selectedIds, users]);
+
+  const handleBulkApprove = async () => {
+    if (!selectedIds.length) return;
+    setBulkLoading(true);
+    try {
+      await axios.patch(
+        `${process.env.NEXT_PUBLIC_BACKEND_URL}/admin/users/bulk-verify`,
+        {
+          userIds: selectedIds,
+          action: "APPROVE",
+        },
+      );
+
+      setList((prev) => prev.filter((u) => !selectedIds.includes(u.id)));
+      clearSelection();
+    } catch (e) {
+      alert("Bulk approve failed");
+    } finally {
+      setBulkLoading(false);
+    }
+  };
+
+  const handleBulkReject = async () => {
+    if (!selectedIds.length) return;
+    setBulkLoading(true);
+    try {
+      await axios.patch(
+        `${process.env.NEXT_PUBLIC_BACKEND_URL}/admin/users/bulk-verify`,
+        {
+          userIds: selectedIds,
+          action: "REJECT",
+        },
+      );
+
+      setList((prev) => prev.filter((u) => !selectedIds.includes(u.id)));
+      clearSelection();
+    } catch (e) {
+      alert("Bulk reject failed");
+    } finally {
+      setBulkLoading(false);
+    }
+  };
+
   useEffect(() => {
     setList(users);
   }, [users]);
 
+  useEffect(() => {
+    clearSelection();
+  }, [page, filters, users]);
+
   return (
     <div className="space-y-5">
+      {selectedIds.length > 0 && (
+        <div className="top-[64px] z-20">
+          <BulkActionBar
+            count={selectedIds.length}
+            total={list.length}
+            onSelectAll={() => setSelectedIds(list.map((u) => u.id))}
+            onApprove={handleBulkApprove}
+            onReject={handleBulkReject}
+            onClear={clearSelection}
+            loading={bulkLoading}
+          />
+        </div>
+      )}
+
       {/* MOBILE VIEW */}
       <div className="md:hidden space-y-4">
-        {/* {loading ? (
-          <div className="text-center text-gray-500 py-10">
-            Loading pending requests...
-          </div> */}
         {loading ? (
           <>
             {Array.from({ length: 4 }).map((_, i) => (
@@ -55,26 +146,6 @@ export default function RequestTable({ filters }: Props) {
             No pending requests found
           </div>
         ) : (
-          // users.map((user) => (
-          //   <RequestCard
-          //     key={user.id}
-          //     user={user}
-          //     loading={actionLoadingId === user.id}
-          //     // onApprove={(id) => verifyUser(id)}
-          //     // onReject={(id) => rejectUser(id)}
-          //     onApprove={() => {
-          //       setSelectedUser(user);
-          //       setActionType("approve");
-          //       setConfirmOpen(true);
-          //     }}
-          //     onReject={() => {
-          //       setSelectedUser(user);
-          //       setActionType("reject");
-          //       setConfirmOpen(true);
-          //     }}
-          //   />
-          // ))
-
           <AnimatePresence>
             {list.map((user) => (
               <motion.div
@@ -87,6 +158,9 @@ export default function RequestTable({ filters }: Props) {
               >
                 <RequestCard
                   user={user}
+                  selected={selectedIds.includes(user.id)}
+                  onToggleSelect={() => toggleSelect(user.id)}
+                  disableActions={isMultiSelect}
                   loading={actionLoadingId === user.id}
                   onApprove={() => {
                     setSelectedUser(user);
@@ -105,18 +179,29 @@ export default function RequestTable({ filters }: Props) {
         )}
       </div>
 
-      {/* DESKTOP TABLE */}
       <div className="hidden md:block bg-white rounded-xl border shadow-sm overflow-hidden">
-        {/* Table header */}
         <div className="grid grid-cols-12 px-5 py-3 text-sm font-medium text-gray-600 border-b bg-gray-50 sticky top-0 z-10">
-          <div className="col-span-5">User</div>
+          {/* <div className="col-span-1 flex items-center"> */}
+          <div
+            className={`col-span-1 flex items-center transition-opacity duration-200
+    ${isMultiSelect ? "opacity-100" : "opacity-0 pointer-events-none"}
+  `}
+          >
+            <input
+              ref={selectAllRef}
+              type="checkbox"
+              checked={isAllSelected}
+              onChange={toggleSelectAll}
+              className="w-4 h-4 accent-black cursor-pointer"
+            />
+          </div>
+          <div className="col-span-4 pl-10">User</div>
           <div className="col-span-2">Role</div>
           <div className="col-span-2">Branch</div>
           <div className="col-span-2">Session</div>
           <div className="col-span-1 text-right">Actions</div>
         </div>
 
-        {/* Table body */}
         {loading ? (
           <>
             {Array.from({ length: 6 }).map((_, i) => (
@@ -128,31 +213,6 @@ export default function RequestTable({ filters }: Props) {
             No pending requests found
           </div>
         ) : (
-          // users.map((user) => (
-          //   <RequestRow
-          //     key={user.id}
-          //     user={user}
-          //     onClick={() => {
-          //       setSelectedUser(user);
-          //       setOpen(true);
-          //     }}
-          //     // onVerify={verifyUser}
-          //     // onReject={rejectUser}
-          //     // loading={actionLoadingId === user.id}
-
-          //     onApprove={() => {
-          //       setSelectedUser(user);
-          //       setActionType("approve");
-          //       setConfirmOpen(true);
-          //     }}
-          //     onReject={() => {
-          //       setSelectedUser(user);
-          //       setActionType("reject");
-          //       setConfirmOpen(true);
-          //     }}
-          //   />
-          // ))
-
           <AnimatePresence>
             {list.map((user) => (
               <motion.div
@@ -165,6 +225,9 @@ export default function RequestTable({ filters }: Props) {
               >
                 <RequestRow
                   user={user}
+                  selected={selectedIds.includes(user.id)}
+                  onToggleSelect={() => toggleSelect(user.id)}
+                  disableActions={isMultiSelect}
                   onClick={() => {
                     setSelectedUser(user);
                     setOpen(true);
@@ -186,7 +249,6 @@ export default function RequestTable({ filters }: Props) {
         )}
       </div>
 
-      {/* PAGINATION */}
       {totalPages > 1 && (
         <div className="flex flex-wrap justify-between items-center gap-3">
           <p className="text-sm text-gray-500">
@@ -214,15 +276,6 @@ export default function RequestTable({ filters }: Props) {
       )}
 
       {/* USER MODAL */}
-      <UserDetailsModal
-        open={open}
-        onClose={() => setOpen(false)}
-        user={selectedUser}
-        loading={actionLoadingId === selectedUser?.id}
-        onVerify={() => verifyUser(selectedUser.id)}
-        onReject={() => rejectUser(selectedUser.id)}
-      />
-
       <ConfirmActionModal
         open={confirmOpen}
         onClose={() => setConfirmOpen(false)}
